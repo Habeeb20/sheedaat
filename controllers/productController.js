@@ -39,7 +39,7 @@ export const getAllProducts = async (req, res) => {
 
     cache.set(PRODUCTS_LIST_KEY, products);
 
-    res.json(products);
+    res.status(200).json(products);
   } catch (error) {
     res.status(500).json({ message: 'Error fetching products', error: error.message });
   }

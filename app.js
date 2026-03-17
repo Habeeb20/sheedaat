@@ -5,7 +5,7 @@ import dotenv from "dotenv";
 import morgan from "morgan";
 import { connectDb } from "./db.js";
 import adminRoute from "./routes/adminRoute.js"
-
+import appointmentRoute from "./routes/appointmentRoute.js"
 dotenv.config();
 const app = express();
 connectDb()
@@ -31,10 +31,11 @@ app.use(morgan("dev"));
 
 // Routes
 app.get("/", (req, res) => {
-  res.send("edriver backend is listening on port....");
+  res.send("sheedaat backend is listening on port....");
 });
 
 app.use("/api/admin", adminRoute)
+app.use('/api/appointment', appointmentRoute)
 
 
 // await Admin.create({

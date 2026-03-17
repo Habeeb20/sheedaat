@@ -13,11 +13,17 @@ const serviceSchema = new mongoose.Schema({
     trim: true,
     maxlength: [100, 'type cannot exceed 100 characters'],
   },
+
   name: {
     type: String,
     required: [true, 'Service name is required'],
     trim: true,
     maxlength: [100, 'Name cannot exceed 100 characters'],
+  },
+    timeRange: {
+    type: String,
+    required:false
+  
   },
   description: {  // write-up
     type: String,

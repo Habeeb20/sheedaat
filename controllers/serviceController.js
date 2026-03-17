@@ -8,9 +8,9 @@ const SERVICES_LIST_KEY = 'services:all';
 export const createService = async (req, res) => {
         const user = req.user._id
   try {
-    const { name, description, media } = req.body;
+    const { name, description, media, timeRange } = req.body;
 
-    const service = new Service({user, name, description, media });
+    const service = new Service({user, name, description, media, timeRange });
     await service.save();
 
     cache.del(SERVICES_LIST_KEY);
