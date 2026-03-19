@@ -2,7 +2,10 @@
 import express from "express";
 import { protect } from "../middleware/verifyToken.js";
 import { loginUser, forgotPassword, resetPassword, confirmEmailChange, getDashboard, updateProfile, 
-    changePassword, changeEmail
+    changePassword, changeEmail,
+    refreshToken,
+    logout,
+    logoutAll
  } from "../controllers/adminController.js";
 
  import * as productCtrl from '../controllers/productController.js';
@@ -25,6 +28,11 @@ router.put("/profile", updateProfile);              // Update own profile
 router.post("/change-password", changePassword);
 router.post("/change-email", changeEmail);
 
+// routes/auth.js (example)
+router.post('/login', loginUser);
+router.post('/refresh-token', refreshToken);
+router.post('/logout',  logout);
+router.post('/logout-all',  logoutAll);
 
 
 

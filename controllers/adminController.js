@@ -13,7 +13,13 @@ import { comparePassword,  forgotPassword as forgotPasswordUtil,
   sendEmailChangeRequest,
   confirmEmailChange as confirmEmailChangeUtil,
 
-  generateToken, } from "../utils/function.js";
+  generateToken,
+  generateAccessToken,
+  generateRefreshToken,
+  saveRefreshToken,
+  verifyRefreshToken,
+  removeRefreshToken,
+  revokeAllRefreshTokens, } from "../utils/function.js";
 
 
 
@@ -54,7 +60,17 @@ export const loginUser = async (req, res) => {
 
    
     const token = generateTokenCustom(user);
+       const accessToken = generateAccessToken(user._id, user.role);
+    const refreshToken = generateRefreshToken(user._id);
 
+    await saveRefreshToken(user._id, refreshToken, req.headers['user-agent'] || 'unknown');
+
+  res.cookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
 
     return res.status(200).json({
       status: true,
@@ -389,3 +405,145 @@ export const confirmEmailChange = async (req, res) => {
     return res.status(400).json({ status: false, message: error.message });
   }
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// Refresh access token using refresh token
+export const refreshToken = async (req, res) => {
+  try {
+    const refreshToken = req.cookies.refreshToken;
+
+    if (!refreshToken) {
+      return res.status(401).json({
+        status: false,
+        message: "Refresh token required",
+      });
+    }
+
+    // Verify refresh token
+    const decoded = verifyRefreshToken(refreshToken);
+
+    // Find user and check if this refresh token is still valid
+    const user = await User.findOne({
+      _id: decoded.id,
+      'refreshTokens.token': refreshToken,
+    });
+
+    if (!user) {
+      // Token was revoked or invalid
+      res.clearCookie('refreshToken');
+      return res.status(403).json({
+        status: false,
+        message: "Invalid or revoked refresh token",
+      });
+    }
+
+    // Generate new access token
+    const newAccessToken = generateAccessToken(user._id, user.role);
+
+    return res.status(200).json({
+      status: true,
+      message: "Token refreshed",
+      accessToken: newAccessToken,
+    });
+  } catch (error) {
+    console.error("Refresh token error:", error);
+    res.clearCookie('refreshToken');
+    return res.status(403).json({
+      status: false,
+      message: "Invalid refresh token",
+    });
+  }
+};
+
+
+
+
+// Logout – single device (clears current refresh token)
+export const logout = async (req, res) => {
+  try {
+    const refreshToken = req.cookies.refreshToken;
+
+    if (refreshToken) {
+      // Remove this specific refresh token
+      await removeRefreshToken(req.user._id, refreshToken);
+    }
+
+    // Clear cookie
+    res.clearCookie('refreshToken', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+    });
+
+    return res.status(200).json({
+      status: true,
+      message: "Logged out successfully",
+    });
+  } catch (error) {
+    console.error("Logout error:", error);
+    return res.status(500).json({
+      status: false,
+      message: "Server error during logout",
+    });
+  }
+};
+
+// Logout from ALL devices
+export const logoutAll = async (req, res) => {
+  try {
+    await revokeAllRefreshTokens(req.user._id);
+
+    res.clearCookie('refreshToken', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+    });
+
+    return res.status(200).json({
+      status: true,
+      message: "Logged out from all devices",
+    });
+  } catch (error) {
+    console.error("Logout all error:", error);
+    return res.status(500).json({
+      status: false,
+      message: "Server error",
+    });
+  }
+};
+
+
+
+
+
+
+

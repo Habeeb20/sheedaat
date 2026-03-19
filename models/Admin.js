@@ -23,6 +23,15 @@ const adminSchema = new mongoose.Schema({
   emailChangeExpiresAt: Date,
       isActive: { type: Boolean, default: true },
 
+
+  refreshTokens: [{
+    token: String,
+    deviceInfo: String,     // optional: browser, IP, etc.
+    createdAt: { type: Date, default: Date.now },
+    expiresAt: Date,
+  }],
+
+
 }, { timestamps: true })
 
 const Admin = mongoose.model('Admin', adminSchema)

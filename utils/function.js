@@ -252,3 +252,87 @@ export const confirmEmailChange = async (token) => {
   return user;
 };
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export const generateAccessToken = (userId, role) => {
+  return jwt.sign(
+    { id: userId, role },
+    process.env.JWT_SECRET,
+    { expiresIn: process.env.JWT_ACCESS_EXPIRY || '15m' }
+  );
+};
+
+// Generate refresh token (long-lived)
+export const generateRefreshToken = (userId) => {
+  return jwt.sign(
+    { id: userId },
+    process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET,
+    { expiresIn: process.env.JWT_REFRESH_EXPIRY || '7d' }
+  );
+};
+
+// Verify access token
+export const verifyAccessToken = (token) => {
+  return jwt.verify(token, process.env.JWT_SECRET);
+};
+
+// Verify refresh token
+export const verifyRefreshToken = (token) => {
+  return jwt.verify(token, process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET);
+};
+
+// Add refresh token to user (for rotation & security)
+export const saveRefreshToken = async (userId, refreshToken, deviceInfo = '') => {
+  const user = await User.findById(userId);
+  if (!user) throw new Error('User not found');
+
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + 7); // 7 days
+
+  user.refreshTokens.push({
+    token: refreshToken,
+    deviceInfo,
+    expiresAt,
+  });
+
+  await user.save();
+};
+
+// Remove specific refresh token (logout from one device)
+export const removeRefreshToken = async (userId, refreshToken) => {
+  await User.updateOne(
+    { _id: userId },
+    { $pull: { refreshTokens: { token: refreshToken } } }
+  );
+};
+
+// Remove all refresh tokens (logout from all devices)
+export const revokeAllRefreshTokens = async (userId) => {
+  await User.updateOne(
+    { _id: userId },
+    { $set: { refreshTokens: [] } }
+  );
+};
