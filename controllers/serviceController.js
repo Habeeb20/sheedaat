@@ -150,27 +150,115 @@ export const getServiceById = async (req, res) => {
   }
 };
 
-export const updateService = async (req, res) => {
-        const user = req.user._id
-  try {
-    const { id } = req.params;
-    const updates = req.body;
+// export const updateService = async (req, res) => {
+//         const user = req.user._id
+//   try {
+//     const { id } = req.params;
+//     const updates = req.body;
 
-    const service = await Service.findByIdAndUpdate(id, updates, { new: true, runValidators: true });
+//     const service = await Service.findByIdAndUpdate(id, updates, { new: true, runValidators: true });
 
-    if (!service) {
-      return res.status(404).json({ message: 'Service not found' });
+//     if (!service) {
+//       return res.status(404).json({ message: 'Service not found' });
+//     }
+
+//     cache.del(`service:${id}`);
+//     cache.del(SERVICES_LIST_KEY);
+
+//     res.json({ message: 'Service updated', service });
+//   } catch (error) {
+//     res.status(400).json({ message: 'Error updating service', error: error.message });
+//   }
+// };
+
+
+
+
+export const updateService = [
+  // Parse multipart/form-data — allow up to 10 new files under field "media"
+  upload.array('media', 10),
+
+  async (req, res) => {
+    try {
+      const userId = req.user._id;
+      const { id } = req.params;
+
+      // Find the service and ensure it belongs to the authenticated user
+      const service = await Service.findOne({ _id: id, user: userId });
+      if (!service) {
+        return res.status(404).json({ message: 'Service not found or not owned by you' });
+      }
+
+      // ── 1. Handle text fields from req.body ─────────────────────────────
+      const allowedUpdates = [
+        'name',
+        'description',
+        'timeRange',
+        // add any other fields you allow updating (e.g. price, category, etc.)
+      ];
+
+      const updates = {};
+
+      allowedUpdates.forEach(field => {
+        if (req.body[field] !== undefined) {
+          updates[field] = req.body[field];
+        }
+      });
+
+      // ── 2. Handle new media files (if uploaded) ─────────────────────────
+      let newMediaUrls = [];
+
+      if (req.files && req.files.length > 0) {
+        const uploadPromises = req.files.map(async (file) => {
+          const url = await uploadToCloudinary(file.buffer, {
+            public_id: `service-${id}-${Date.now()}`,
+          });
+          return url;
+        });
+
+        newMediaUrls = await Promise.all(uploadPromises);
+      }
+
+      // ── 3. Decide how to handle media field ─────────────────────────────
+      // Option A: REPLACE all media with new ones (recommended for simplicity)
+      if (newMediaUrls.length > 0) {
+        updates.media = newMediaUrls;
+      }
+
+      // Option B: APPEND new images (keep old ones) — uncomment if preferred
+      // else if (newMediaUrls.length > 0) {
+      //   updates.media = [...(service.media || []), ...newMediaUrls];
+      // }
+
+      // Optional: if frontend sends empty media array → clear images
+      if (req.body.media === '' || (Array.isArray(req.body.media) && req.body.media.length === 0)) {
+        updates.media = [];
+      }
+
+      // ── 4. Perform the update ───────────────────────────────────────────
+      const updatedService = await Service.findByIdAndUpdate(
+        id,
+        { $set: updates },
+        { new: true, runValidators: true }
+      );
+
+      // Invalidate caches
+      cache.del(`service:${id}`);
+      cache.del(SERVICES_LIST_KEY);
+
+      return res.status(200).json({
+        message: 'Service updated successfully',
+        service: updatedService,
+      });
+    } catch (error) {
+      console.error('Update service error:', error);
+      return res.status(400).json({
+        message: 'Error updating service',
+        error: error.message,
+      });
     }
-
-    cache.del(`service:${id}`);
-    cache.del(SERVICES_LIST_KEY);
-
-    res.json({ message: 'Service updated', service });
-  } catch (error) {
-    res.status(400).json({ message: 'Error updating service', error: error.message });
-  }
-};
-
+  },
+];
 export const deleteService = async (req, res) => {
   try {
     const { id } = req.params;
@@ -189,6 +277,7 @@ export const deleteService = async (req, res) => {
     res.status(500).json({ message: 'Error deleting service', error: error.message });
   }
 };
+
 
 
 

@@ -3,7 +3,9 @@ import GalleryItem from '../models/Gallery.js';
 import cache from '../cache.js';
 import cloudinary from '../utils/cloudinary.js';
 import multer from "multer"
+import dotenv from "dotenv"
 
+dotenv.config()
 const GALLERY_LIST_KEY = 'gallery:all';
 
 
@@ -143,25 +145,110 @@ export const getGalleryItemById = async (req, res) => {
   }
 };
 
-export const updateGalleryItem = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const updates = req.body;
+// export const updateGalleryItem = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     const updates = req.body;
 
-    const item = await GalleryItem.findByIdAndUpdate(id, updates, { new: true, runValidators: true });
+//     const item = await GalleryItem.findByIdAndUpdate(id, updates, { new: true, runValidators: true });
 
-    if (!item) {
-      return res.status(404).json({ message: 'Gallery item not found' });
+//     if (!item) {
+//       return res.status(404).json({ message: 'Gallery item not found' });
+//     }
+
+//     cache.del(`gallery:${id}`);
+//     cache.del(GALLERY_LIST_KEY);
+
+//     res.json({ message: 'Gallery item updated', item });
+//   } catch (error) {
+//     res.status(400).json({ message: 'Error updating gallery item', error: error.message });
+//   }
+// };
+
+
+export const updateGalleryItem = [
+  // Parse multipart/form-data — allow up to 10 new files under field "media"
+  upload.array('media', 10),
+
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      // Optional: restrict update to owner only (recommended)
+      const userId = req.user?._id;
+      const item = await GalleryItem.findOne({ _id: id, user: userId });
+      if (!item) {
+        return res.status(404).json({ 
+          message: 'Gallery item not found or you do not have permission to update it' 
+        });
+      }
+
+      // ── 1. Handle text fields from req.body ─────────────────────────────
+      const allowedUpdates = ['type', 'caption', "caption"]; // add any other allowed fields
+
+      const updates = {};
+
+      allowedUpdates.forEach(field => {
+        if (req.body[field] !== undefined) {
+          updates[field] = req.body[field];
+        }
+      });
+
+      // ── 2. Handle new media files (if uploaded) ─────────────────────────
+      let newMediaUrls = [];
+
+      if (req.files && req.files.length > 0) {
+        const uploadPromises = req.files.map(async (file) => {
+          const url = await uploadToCloudinary(file.buffer, {
+            public_id: `gallery-${id}-${Date.now()}`,
+          });
+          return url;
+        });
+
+        newMediaUrls = await Promise.all(uploadPromises);
+      }
+
+      // ── 3. Decide how to handle media field ─────────────────────────────
+      // Option A: REPLACE all media with new ones (recommended for most cases)
+      if (newMediaUrls.length > 0) {
+        updates.media = newMediaUrls;
+      }
+
+      // Option B: APPEND new media (keep old ones) — uncomment if preferred
+      // else if (newMediaUrls.length > 0) {
+      //   updates.media = [...(item.media || []), ...newMediaUrls];
+      // }
+
+      // Optional: if frontend sends empty media → clear all images
+      if (req.body.media === '' || (Array.isArray(req.body.media) && req.body.media.length === 0)) {
+        updates.media = [];
+      }
+
+      // ── 4. Perform the update ───────────────────────────────────────────
+      const updatedItem = await GalleryItem.findByIdAndUpdate(
+        id,
+        { $set: updates },
+        { new: true, runValidators: true }
+      );
+
+      // Invalidate caches
+      cache.del(`gallery:${id}`);
+      cache.del(GALLERY_LIST_KEY);
+
+      return res.status(200).json({
+        message: 'Gallery item updated successfully',
+        item: updatedItem,
+      });
+    } catch (error) {
+      console.error('Update gallery item error:', error);
+      return res.status(400).json({
+        message: 'Error updating gallery item',
+        error: error.message,
+      });
     }
+  },
+];
 
-    cache.del(`gallery:${id}`);
-    cache.del(GALLERY_LIST_KEY);
-
-    res.json({ message: 'Gallery item updated', item });
-  } catch (error) {
-    res.status(400).json({ message: 'Error updating gallery item', error: error.message });
-  }
-};
 
 export const deleteGalleryItem = async (req, res) => {
   try {
@@ -181,8 +268,6 @@ export const deleteGalleryItem = async (req, res) => {
     res.status(500).json({ message: 'Error deleting gallery item', error: error.message });
   }
 };
-
-
 
 
 

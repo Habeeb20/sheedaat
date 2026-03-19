@@ -3,7 +3,9 @@ import Product from '../models/Product.js';
 import cache from '../cache.js';
 import multer from 'multer';
 import cloudinary from '../utils/cloudinary.js';
+import dotenv from "dotenv"
 
+dotenv.config()
 
 // Cache keys
 const PRODUCTS_LIST_KEY = 'products:all';
@@ -150,27 +152,103 @@ export const getProductById = async (req, res) => {
   }
 };
 
-export const updateProduct = async (req, res) => {
-        const user = req.user._id
-  try {
-    const { id } = req.params;
-    const updates = req.body;
+// export const updateProduct = async (req, res) => {
+//         const user = req.user._id
+//   try {
+//     const { id } = req.params;
+//     const updates = req.body;
 
-    const product = await Product.findByIdAndUpdate(id, updates, { new: true, runValidators: true });
+//     const product = await Product.findByIdAndUpdate(id, updates, { new: true, runValidators: true });
 
-    if (!product) {
-      return res.status(404).json({ message: 'Product not found' });
+//     if (!product) {
+//       return res.status(404).json({ message: 'Product not found' });
+//     }
+
+//     // Invalidate caches
+//     cache.del(`product:${id}`);
+//     cache.del(PRODUCTS_LIST_KEY);
+
+//     res.json({ message: 'Product updated', product });
+//   } catch (error) {
+//     res.status(400).json({ message: 'Error updating product', error: error.message });
+//   }
+// };
+
+
+
+export const updateProduct = [
+  // Parse multipart/form-data — allow up to 10 new files
+  upload.array('media', 10), // field name must be 'media' on frontend
+
+  async (req, res) => {
+    try {
+      const userId = req.user._id;
+      const { id } = req.params;
+
+      // Find existing product (make sure it belongs to the user)
+      const product = await Product.findOne({ _id: id, user: userId });
+      if (!product) {
+        return res.status(404).json({ message: 'Product not found or not owned by you' });
+      }
+
+      // ── 1. Handle text/JSON fields from req.body ────────────────────────
+      const allowedUpdates = ['name', 'price', 'description']; // add any other fields
+      const updates = {};
+
+      allowedUpdates.forEach(field => {
+        if (req.body[field] !== undefined) {
+          updates[field] = req.body[field];
+        }
+      });
+
+      // ── 2. Handle new media files (if any were uploaded) ────────────────
+      let newMediaUrls = [];
+
+      if (req.files && req.files.length > 0) {
+        const uploadPromises = req.files.map(async (file) => {
+          const url = await uploadToCloudinary(file.buffer, {
+            public_id: `product-${id}-${Date.now()}`,
+          });
+          return url;
+        });
+
+        newMediaUrls = await Promise.all(uploadPromises);
+      }
+
+      // ── 3. Decide how to handle media ──────────────────────────────────
+      // Option A: REPLACE all media (most common for simple updates)
+      if (newMediaUrls.length > 0) {
+        updates.media = newMediaUrls;
+      }
+      // Option B: APPEND new images (keep old ones)
+      // else if (newMediaUrls.length > 0) {
+      //   updates.media = [...(product.media || []), ...newMediaUrls];
+      // }
+
+      // ── 4. Perform the update ──────────────────────────────────────────
+      const updatedProduct = await Product.findByIdAndUpdate(
+        id,
+        { $set: updates },
+        { new: true, runValidators: true }
+      );
+
+      // Invalidate caches
+      cache.del(`product:${id}`);
+      cache.del(PRODUCTS_LIST_KEY);
+
+      return res.status(200).json({
+        message: 'Product updated successfully',
+        product: updatedProduct,
+      });
+    } catch (error) {
+      console.error('Update product error:', error);
+      return res.status(400).json({
+        message: 'Error updating product',
+        error: error.message,
+      });
     }
-
-    // Invalidate caches
-    cache.del(`product:${id}`);
-    cache.del(PRODUCTS_LIST_KEY);
-
-    res.json({ message: 'Product updated', product });
-  } catch (error) {
-    res.status(400).json({ message: 'Error updating product', error: error.message });
-  }
-};
+  },
+];
 
 export const deleteProduct = async (req, res) => {
         const user = req.user._id
@@ -192,11 +270,6 @@ export const deleteProduct = async (req, res) => {
     res.status(500).json({ message: 'Error deleting product', error: error.message });
   }
 };
-
-
-
-
-
 
 
 
