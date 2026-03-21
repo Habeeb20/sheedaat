@@ -142,9 +142,9 @@ export const forgotPassword = async (email) => {
   const resetURL = `${process.env.CLIENT_URL}/reset-password/${resetToken}`;  // Frontend URL
 
   const mailOptions = {
-    from:  `"Edrivers" <${process.env.EMAIL_FROM}>`,
+    from:  `"Sheedatsbraiding" <${process.env.EMAIL_FROM}>`,
     to: user.email,
-    subject: 'Password Reset - DriverHireApp',
+    subject: 'Password Reset',
     html: `
       <h1>Password Reset Request</h1>
       <p>Hi ${user.email},</p>
@@ -184,7 +184,7 @@ export const resetPassword = async (token, newPassword) => {
 // 11. Change Password (For logged-in users)
 export const changePassword = async (userId, currentPassword, newPassword) => {
   const user = await User.findById(userId).select('+password');
-  if (!user || !(await comparePassword(currentPassword, user.password))) {
+  if (!user || user.password !== currentPassword) {
     throw new Error('Current password is incorrect');
   }
 
