@@ -20,7 +20,10 @@ router.post("/forgot-password", forgotPassword);
 router.put("/reset-password/:token", resetPassword);
 router.get("/verify-email-change/:token", confirmEmailChange); // token-based, no auth
 
-// Protected routes (require JWT)
+// Protected routes (require JWT)\
+router.get('/products',  productCtrl.getAllProducts);
+router.get('/services',  serviceCtrl.getAllServices);
+router.get('/gallery',  galleryCtrl.getAllGalleryItems);
 router.use(protect);
 
 router.get("/dashboard", getDashboard);
@@ -38,21 +41,21 @@ router.post('/logout-all',  logoutAll);
 
 // Products
 router.post('/products',  productCtrl.createProduct);
-router.get('/products',  productCtrl.getAllProducts);
+
 router.get('/products/:id',  productCtrl.getProductById);
 router.put('/products/:id',  productCtrl.updateProduct);
 router.delete('/products/:id',  productCtrl.deleteProduct);
 
 // Services
 router.post('/services',  serviceCtrl.createService);
-router.get('/services',  serviceCtrl.getAllServices);
+
 router.get('/services/:id',  serviceCtrl.getServiceById);
 router.put('/services/:id',  serviceCtrl.updateService);
 router.delete('/services/:id',  serviceCtrl.deleteService);
 
 // Gallery
 router.post('/gallery',  galleryCtrl.createGalleryItem);
-router.get('/gallery',  galleryCtrl.getAllGalleryItems);
+
 router.get('/gallery/:id',  galleryCtrl.getGalleryItemById);
 router.put('/gallery/:id',  galleryCtrl.updateGalleryItem);
 router.delete('/gallery/:id',  galleryCtrl.deleteGalleryItem);
