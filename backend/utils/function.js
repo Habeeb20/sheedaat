@@ -139,7 +139,8 @@ export const forgotPassword = async (email) => {
   user.resetPasswordExpiresAt = resetPasswordExpiresAt;
   await user.save();
 
-  const resetURL = `${process.env.CLIENT_URL}/reset-password/${resetToken}`;  // Frontend URL
+  // const resetURL = `${process.env.CLIENT_URL}/reset-password/${resetToken}`;  // Frontend URL
+    const resetURL = `https://test.codequor.com/reset-password/${resetToken}`; 
 
   const mailOptions = {
     from:  `"Sheedatsbraiding" <${process.env.EMAIL_FROM}>`,
