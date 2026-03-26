@@ -62,7 +62,7 @@ export const bookAppointment = async (req, res) => {
       phoneNumber,
       email,
       note,
-      user: userId,
+   
     });
 
     await appointment.save();

@@ -128,10 +128,10 @@ console.log(req.body)
   }
 
   try {
-      const saltRounds = 12;
-      const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
+      // const saltRounds = 12;
+      // const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
 
-    await resetPasswordUtil(token, hashedPassword);
+    await resetPasswordUtil(token, newPassword);
     return res.status(200).json({
       status: true,
       message: "Password reset successful. You can now log in.",
