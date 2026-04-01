@@ -13,16 +13,100 @@ const PRODUCTS_LIST_KEY = 'products:all';
 const upload = multer({ storage: multer.memoryStorage() });
 
 
+// const uploadToCloudinary = async (fileBuffer, options = {}) => {
+//   return new Promise((resolve, reject) => {
+//     const stream = cloudinary.uploader.upload_stream(
+//       {
+//         resource_type: 'auto',
+//         upload_preset: process.env.CLOUDINARY_UPLOAD_PRESET,
+//         ...options,
+//       },
+//       (error, result) => {
+//         if (error) return reject(error);
+//         resolve(result.secure_url);
+//       }
+//     );
+
+//     stream.end(fileBuffer);
+//   });
+// };
+
+
+
+// export const createProduct = [
+//   // Multer middleware to parse form-data (single or multiple images)
+//   upload.array('media', 10), // allow up to 10 files, field name must be 'media'
+
+//   async (req, res) => {
+//     try {
+//       const user = req.user._id;
+//       const { name, price } = req.body;
+
+//       // Handle image uploads
+//       let mediaUrls = [];
+
+//       if (req.files && req.files.length > 0) {
+//         // Upload each file to Cloudinary
+//         const uploadPromises = req.files.map(async (file) => {
+//           const url = await uploadToCloudinary(file.buffer, {
+//             folder: 'products', // optional: organize in Cloudinary folder
+//             public_id: `${user}-${Date.now()}`, // unique name
+//           });
+//           return url;
+//         });
+
+//         mediaUrls = await Promise.all(uploadPromises);
+//       }
+
+//       // Create product in database
+//       const product = new Product({
+//         user,
+//         name,
+//         price,
+//         media: mediaUrls, // array of Cloudinary secure URLs
+//       });
+
+//       await product.save();
+
+//       // Invalidate cache
+//       cache.del(PRODUCTS_LIST_KEY);
+
+//       res.status(201).json({
+//         message: 'Product created successfully',
+//         product,
+//       });
+//     } catch (error) {
+//       console.error('Product creation error:', error);
+//       res.status(500).json({
+//         message: 'Error creating product',
+//         error: error.message,
+//       });
+//     }
+//   },
+// ];
+
+
+
+
+// ====================== CLOUDINARY UPLOAD HELPERS ======================
+
+/**
+ * Upload a single file buffer to Cloudinary
+ */
 const uploadToCloudinary = async (fileBuffer, options = {}) => {
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       {
-        resource_type: 'auto',
+        resource_type: 'auto',                    // Supports images, videos, etc.
         upload_preset: process.env.CLOUDINARY_UPLOAD_PRESET,
-        ...options,
+        folder: 'products',                       // Default folder
+        ...options,                               // Allow overriding folder, public_id, etc.
       },
       (error, result) => {
-        if (error) return reject(error);
+        if (error) {
+          console.error('Cloudinary upload error:', error);
+          return reject(new Error(error.message || 'Failed to upload to Cloudinary'));
+        }
         resolve(result.secure_url);
       }
     );
@@ -31,79 +115,90 @@ const uploadToCloudinary = async (fileBuffer, options = {}) => {
   });
 };
 
+/**
+ * Upload multiple files (images/videos) to Cloudinary
+ * Returns an array of secure URLs
+ */
+const uploadMultipleToCloudinary = async (files, baseOptions = {}) => {
+  if (!files || files.length === 0) return [];
 
-// export const createProduct = async (req, res) => {
-//     const user = req.user._id
-//   // Assume admin auth middleware already checked
-//   try {
-//     const { name, price, media } = req.body;
+  const uploadPromises = files.map((file, index) => {
+    const options = {
+      ...baseOptions,
+      // Create unique public_id to avoid conflicts
+      public_id: `${baseOptions.public_id || 'product'}-${Date.now()}-${index}`,
+    };
+    return uploadToCloudinary(file.buffer, options);
+  });
 
-//     const product = new Product({user, name, price, media });
-//     await product.save();
+  try {
+    return await Promise.all(uploadPromises);
+  } catch (error) {
+    console.error('Multiple upload error:', error);
+    throw error;
+  }
+};
 
-//     // Invalidate cache
-//     cache.del(PRODUCTS_LIST_KEY);
-
-//     res.status(201).json({ message: 'Product created', product });
-//   } catch (error) {
-//     console.log(error)
-//     res.status(500).json({ message: 'Error creating product', error: error.message });
-//   }
-// };
-
+// ====================== CREATE PRODUCT CONTROLLER ======================
 
 export const createProduct = [
-  // Multer middleware to parse form-data (single or multiple images)
-  upload.array('media', 10), // allow up to 10 files, field name must be 'media'
+  // Multer middleware - allows up to 10 files under field name 'media'
+  upload.array('media', 10),
 
   async (req, res) => {
     try {
-      const user = req.user._id;
-      const { name, price } = req.body;
+      const userId = req.user._id;
+      const { name, price, description } = req.body;   // added description (optional)
 
-      // Handle image uploads
-      let mediaUrls = [];
-
-      if (req.files && req.files.length > 0) {
-        // Upload each file to Cloudinary
-        const uploadPromises = req.files.map(async (file) => {
-          const url = await uploadToCloudinary(file.buffer, {
-            folder: 'products', // optional: organize in Cloudinary folder
-            public_id: `${user}-${Date.now()}`, // unique name
-          });
-          return url;
+      // Validate required fields
+      if (!name || !price) {
+        return res.status(400).json({
+          message: 'Name and price are required',
         });
-
-        mediaUrls = await Promise.all(uploadPromises);
       }
 
-      // Create product in database
+      let mediaUrls = [];
+
+      // Handle file uploads if any files were sent
+      if (req.files && req.files.length > 0) {
+        mediaUrls = await uploadMultipleToCloudinary(req.files, {
+          folder: 'products',
+          // You can add transformation or other options here if needed
+        });
+      }
+
+      // Create new product
       const product = new Product({
-        user,
+        user: userId,
         name,
-        price,
-        media: mediaUrls, // array of Cloudinary secure URLs
+        price: Number(price),           // ensure price is number
+        description: description || '', // optional
+        media: mediaUrls,               // array of Cloudinary secure URLs
       });
 
       await product.save();
 
-      // Invalidate cache
-      cache.del(PRODUCTS_LIST_KEY);
+      // Invalidate cache (if you're using caching)
+      if (typeof cache !== 'undefined' && PRODUCTS_LIST_KEY) {
+        cache.del(PRODUCTS_LIST_KEY);
+      }
 
       res.status(201).json({
+        success: true,
         message: 'Product created successfully',
         product,
       });
     } catch (error) {
       console.error('Product creation error:', error);
+
       res.status(500).json({
+        success: false,
         message: 'Error creating product',
         error: error.message,
       });
     }
   },
 ];
-
 
 export const getAllProducts = async (req, res) => {
   try {
@@ -206,7 +301,7 @@ export const updateProduct = [
 
       if (req.files && req.files.length > 0) {
         const uploadPromises = req.files.map(async (file) => {
-          const url = await uploadToCloudinary(file.buffer, {
+          const url = await uploadMultipleToCloudinary(file.buffer, {
             public_id: `product-${id}-${Date.now()}`,
           });
           return url;

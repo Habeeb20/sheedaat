@@ -9,13 +9,14 @@ import { Link } from 'react-router-dom';
 
 import ForgotPassword from './pages/auth/Forgotpassword';
 import ResetPassword from './pages/auth/Resetpassword';
-import AdminLogin from './pages/admin/AdminLogin';
+
+import AdminLogin from "./pages/auth/Login"
 import AdminDashboard from './pages/admin/AdminDashboardss';
 
 import Footer from './component/Footer';
 
 import NotFound from './component/NotFound';
-import AdminLayout from './pages/admin/AdminLayout';
+import Login from './pages/auth/Login';
 
 // Layout Component
 const Layout = () => {
@@ -75,7 +76,8 @@ function App() {
           <Route element={<Layout />}>
      
     
-            <Route path="/admin/login" element={<AdminLogin />} />
+            <Route path="/admin/login" element={<Login />} />
+            <Route path="/login" element={<Login />} />
     
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password/:token" element={<ResetPassword />} />
@@ -87,11 +89,10 @@ function App() {
 
 <Route element={<Layout2 />}>
 
-
-    <Route element={<AdminLayout />}>
           <Route path="/admin/dashboard" element={<AdminDashboard />} />
+          <Route path="/dashboard" element={<AdminDashboard />} />
           {/* You can add more admin routes later: edit, list, etc. */}
-        </Route>
+
 
 </Route>
 

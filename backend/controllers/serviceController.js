@@ -29,39 +29,43 @@ const SERVICES_LIST_KEY = 'services:all';
 // Multer setup – store files in memory (no disk write)
 const upload = multer({ storage: multer.memoryStorage() });
 
-// Helper: upload buffer to Cloudinary
+// Helper remains the same (good as is)
 const uploadToCloudinary = async (fileBuffer, options = {}) => {
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       {
-        resource_type: 'auto', // auto-detect image/video
+        resource_type: 'auto',
         upload_preset: process.env.CLOUDINARY_UPLOAD_PRESET,
-        folder: 'services',    // optional: organize in Cloudinary
+        folder: 'services',
         ...options,
       },
       (error, result) => {
-        if (error) return reject(error);
+        if (error) {
+          console.error('Cloudinary upload error:', error);
+          return reject(error);
+        }
         resolve(result.secure_url);
       }
     );
-
     stream.end(fileBuffer);
   });
 };
 
-// Export as array → multer middleware runs first
+// Create Service - Supports multiple media files
 export const createService = [
-  // Accept multiple files under field name "media" (up to 10)
-  upload.array('media', 10),
+  upload.array('media', 10),   // Accepts up to 10 files
 
   async (req, res) => {
     try {
       const user = req.user._id;
       const { name, description, timeRange } = req.body;
 
-      // Handle media uploads
-      let mediaUrls = [];
+      if (!name || !description) {
+        return res.status(400).json({ message: 'Name and description are required' });
+      }
 
+      // Upload multiple files to Cloudinary
+      let mediaUrls = [];
       if (req.files && req.files.length > 0) {
         const uploadPromises = req.files.map(async (file) => {
           const url = await uploadToCloudinary(file.buffer, {
@@ -73,35 +77,34 @@ export const createService = [
         mediaUrls = await Promise.all(uploadPromises);
       }
 
-      // Create service document
       const service = new Service({
         user,
         name,
         description,
-        media: mediaUrls,      // ← array of Cloudinary secure URLs
+        media: mediaUrls,        // Array of Cloudinary URLs
         timeRange,
       });
 
       await service.save();
 
       // Invalidate cache
-      cache.del(SERVICES_LIST_KEY);
+      if (cache && SERVICES_LIST_KEY) cache.del(SERVICES_LIST_KEY);
 
       res.status(201).json({
+        success: true,
         message: 'Service created successfully',
         service,
       });
     } catch (error) {
       console.error('Service creation error:', error);
-      res.status(400).json({
+      res.status(500).json({
+        success: false,
         message: 'Error creating service',
         error: error.message,
       });
     }
   },
 ];
-
-
 
 export const getAllServices = async (req, res) => {
   try {
@@ -172,10 +175,8 @@ export const getServiceById = async (req, res) => {
 // };
 
 
-
-
+// Update Service - Supports multiple media files
 export const updateService = [
-  // Parse multipart/form-data — allow up to 10 new files under field "media"
   upload.array('media', 10),
 
   async (req, res) => {
@@ -183,35 +184,26 @@ export const updateService = [
       const userId = req.user._id;
       const { id } = req.params;
 
-      // Find the service and ensure it belongs to the authenticated user
+      // Check ownership
       const service = await Service.findOne({ _id: id, user: userId });
       if (!service) {
         return res.status(404).json({ message: 'Service not found or not owned by you' });
       }
 
-      // ── 1. Handle text fields from req.body ─────────────────────────────
-      const allowedUpdates = [
-        'name',
-        'description',
-        'timeRange',
-        // add any other fields you allow updating (e.g. price, category, etc.)
-      ];
-
       const updates = {};
 
-      allowedUpdates.forEach(field => {
-        if (req.body[field] !== undefined) {
-          updates[field] = req.body[field];
-        }
-      });
+      // Update text fields
+      if (req.body.name !== undefined) updates.name = req.body.name;
+      if (req.body.description !== undefined) updates.description = req.body.description;
+      if (req.body.timeRange !== undefined) updates.timeRange = req.body.timeRange;
 
-      // ── 2. Handle new media files (if uploaded) ─────────────────────────
+      // ── Handle Media Files ─────────────────────────────────────
       let newMediaUrls = [];
 
       if (req.files && req.files.length > 0) {
         const uploadPromises = req.files.map(async (file) => {
           const url = await uploadToCloudinary(file.buffer, {
-            public_id: `service-${id}-${Date.now()}`,
+            public_id: `service-${id}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
           });
           return url;
         });
@@ -219,23 +211,23 @@ export const updateService = [
         newMediaUrls = await Promise.all(uploadPromises);
       }
 
-      // ── 3. Decide how to handle media field ─────────────────────────────
-      // Option A: REPLACE all media with new ones (recommended for simplicity)
+      // Decide media behavior:
+      // Option 1: Replace all media with newly uploaded ones (Recommended for most UIs)
       if (newMediaUrls.length > 0) {
         updates.media = newMediaUrls;
       }
 
-      // Option B: APPEND new images (keep old ones) — uncomment if preferred
-      // else if (newMediaUrls.length > 0) {
+      // Option 2: Append new media to existing ones (uncomment if you prefer this)
+      // if (newMediaUrls.length > 0) {
       //   updates.media = [...(service.media || []), ...newMediaUrls];
       // }
 
-      // Optional: if frontend sends empty media array → clear images
-      if (req.body.media === '' || (Array.isArray(req.body.media) && req.body.media.length === 0)) {
+      // Optional: Allow clearing all media from frontend
+      if (req.body.clearMedia === 'true' || req.body.media === '') {
         updates.media = [];
       }
 
-      // ── 4. Perform the update ───────────────────────────────────────────
+      // Perform update
       const updatedService = await Service.findByIdAndUpdate(
         id,
         { $set: updates },
@@ -243,22 +235,27 @@ export const updateService = [
       );
 
       // Invalidate caches
-      cache.del(`service:${id}`);
-      cache.del(SERVICES_LIST_KEY);
+      if (cache) {
+        cache.del(`service:${id}`);
+        cache.del(SERVICES_LIST_KEY);
+      }
 
-      return res.status(200).json({
+      res.status(200).json({
+        success: true,
         message: 'Service updated successfully',
         service: updatedService,
       });
     } catch (error) {
       console.error('Update service error:', error);
-      return res.status(400).json({
+      res.status(500).json({
+        success: false,
         message: 'Error updating service',
         error: error.message,
       });
     }
   },
 ];
+
 export const deleteService = async (req, res) => {
   try {
     const { id } = req.params;

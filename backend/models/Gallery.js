@@ -5,7 +5,7 @@ const galleryItemSchema = new mongoose.Schema({
   type: {
     type: String,
     enum: ['image', 'video'],
-    required: [true, 'Type (image/video) is required'],
+    // required: [true, 'Type (image/video) is required'],
     default: 'image'
   },
 media: [{                 // ← array of strings

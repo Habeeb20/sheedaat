@@ -15,11 +15,12 @@ const productSchema = new mongoose.Schema({
   },
   price: {
     type: Number,
-    required: [true, 'Product price is required'],
+    required: [false, 'Product price is required'],
     min: [0, 'Price cannot be negative'],
   },
   media: [{  // array of Cloudinary URLs (pictures/videos)
     type: String,
+
     validate: {
       validator: function(v) {
         return /^(https?:\/\/)/.test(v); // basic URL check
